@@ -1,0 +1,5 @@
+[theme]
+primaryColor = "#df0074"  # Your pink brand color
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#f8f9fa"
+textColor = "#262730"
