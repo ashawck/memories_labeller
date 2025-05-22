@@ -7,11 +7,9 @@ from typing import List, Dict, Any, Optional
 
 # --- Configuration ---
 LABEL_CLASSIFICATIONS = [
-    "True Positive (Correct Alert)",
-    "False Positive (Incorrect Alert)",
-    "True Negative (Correctly No Alert)",
-    "False Negative (Incorrectly No Alert)",
-    "Unsure / Skip",
+    "Correct 👍",
+    "Incorrect 👎",
+    "I'm not sure 🤔",
 ]
 DEFAULT_OUTPUT_FILENAME = "alerts_labeled_tp_fp_tn_fn.jsonl"
 READABLE_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -87,7 +85,7 @@ def load_data_and_labels(uploaded_file):
         try:
             uploaded_file.seek(0)
             lines = uploaded_file.readlines()
-            st.info(f"Read {len(lines)} lines from file. Parsing...")
+            # Hide technical messages from users
             for i, line_bytes in enumerate(lines):
                 try:
                     line_str = line_bytes.decode('utf-8').strip()
@@ -109,26 +107,22 @@ def load_data_and_labels(uploaded_file):
                                     "human_label_correct_memory_optional": processed_record.get("human_label_correct_memory_optional", ""),
                                 }
                 except json.JSONDecodeError:
-                    st.warning(f"Skipping invalid JSON line {i+1}: {line_bytes[:100]}...")
+                    # Silently skip invalid JSON without showing warnings
+                    pass
                 except UnicodeDecodeError:
-                    st.warning(f"Skipping line {i+1} due to UTF-8 decoding error.")
+                    # Silently skip decoding errors without showing warnings
+                    pass
                 except Exception as e:
-                    st.warning(f"Error processing line {i+1}: {e}")
+                    # Silently handle errors without showing warnings
+                    pass
 
-            # Display summary messages after processing all lines
-            if data:
-                st.success(f"Successfully parsed {len(data)} records.")
-                if loaded_labels:
-                    st.success(f"Loaded existing labels for {len(loaded_labels)} records.")
-                else:
-                    st.info("No existing labels found in the file.")
-            else:
-                st.warning("No valid records parsed from the file.")
+            # No summary messages after processing
 
             return data, loaded_labels  # Return both data and labels
 
         except Exception as e:
-            st.error(f"Failed to read or process file: {e}")
+            # Only show error for critical failures
+            st.error("There was a problem loading the file. Please make sure it's a valid JSONL file.")
             return [], {}  # Return empty on major failure
     return [], {}  # Return empty if no file
 
@@ -241,7 +235,11 @@ def transform_record(record):
 
 # --- Function to Apply Filter ---
 def apply_filter():
-    """Filters the data based on the session state checkbox."""
+    """
+    Previously used to filter data based on MEMORY tags.
+    Now just saves the current state and ensures all data is shown.
+    Kept for compatibility.
+    """
     # Save current label state before potentially changing index/data
     # Check if data exists and index is valid before saving
     if st.session_state.data and 0 <= st.session_state.index < len(st.session_state.data):
@@ -249,13 +247,9 @@ def apply_filter():
         if current_record_id:
             save_labels_to_state(st.session_state.index, current_record_id)
 
-    if st.session_state.get('filter_positives', False):
-        st.session_state.data = [
-            record for record in st.session_state.all_data
-            if "<MEMORY" in record.get('llm_output', '')
-        ]
-    else:
-        st.session_state.data = st.session_state.all_data
+    # Always show all data (filter removed)
+    st.session_state.data = st.session_state.all_data
+    
     # Reset index whenever filter changes
     st.session_state.index = 0
 
@@ -346,13 +340,39 @@ st.set_page_config(layout="wide", page_title="Visory AI Memory Labelling Tool")
 # Apply custom styling with brand colors
 apply_custom_styling()
 
-# Add branded logo and title
+# Add branded logo - this always shows
 st.markdown(f"""
-    <h1 style='color:{BRAND_COLOR};'>
-        <span style='font-size:1.8rem;'>Visory AI Memory Labelling Tool</span>
-    </h1>
-    <p style='margin-top:-20px;margin-bottom:30px;'>Evaluate and label AI memory generation quality</p>
+    <h1 style='color:{BRAND_COLOR};'>Visory AI Memory Labelling Tool</h1>
+    <h2 style='color:{BRAND_COLOR};text-align:center;'>🌟 Welcome to Visory's Delphi AI Memory Labelling Tool! 🌟</h2>
 """, unsafe_allow_html=True)
+
+# Determine if instructions should be expanded by default
+# (expanded when no file is loaded, collapsed when a file is loaded)
+show_instructions = len(st.session_state.get('data', [])) == 0
+
+# Put instructions in an expander
+with st.expander("How to use this tool", expanded=show_instructions):
+    st.markdown(f"""
+        <p>Hi there, valued expert! We're excited you're here to help Delphi, our clever AI assistant, get smarter at recognising useful memories.</p>
+        
+        <p style='color:{BRAND_COLOR};font-weight:bold;margin-top:20px;'>🚀 How to Jump In:</p>
+        <p>1. <b>📁 Upload Your Document</b> Use the sidebar on the left to upload your JSONL file. Each line should be a neatly formatted JSON object representing an AI conversation.</p>
+        
+        <p>2. <b>🔍 Review Delphi's Memory</b> You'll see one memory at a time, including Delphi's determination about whether it's useful.</p>
+        
+        <p>3. <b>✅ Label Delphi's Decision</b> Help Delphi learn by telling it how it did:</p>
+        <p style='margin-left:20px;'><b>Correct 👍</b>: Delphi nailed it!</p>
+        <p style='margin-left:20px;'><b>Incorrect 👎</b>: Delphi missed the mark.</p>
+        <p style='margin-left:20px;'><b>I'm not sure 🤔</b>: If it's unclear, that's totally fine!</p>
+        
+        <p>4. <b>💬 Optional Critiques</b> If you'd like, you can leave notes to explain your choice or provide helpful feedback. Your insights are gold to us!</p>
+        
+        <p>5. <b>↔️ Easy Navigation</b> Click the <b>Right Arrow</b> ➡️ to move forward and the <b>Left Arrow</b> ⬅️ to revisit previous entries.</p>
+        
+        <p>6. <b>📥 All Done? Download & Submit!</b> Once you've reviewed all memories, hit <b>"Download Labelled Data"</b>. Then simply email the file to <b>Ben Field at ben.field@visory.com.au</b>.</p>
+        
+        <p style='text-align:center;margin-top:20px;'><b>🎉 Thank you for lending your expertise! Together, we're making Delphi even more brilliant! 🎉</b></p>
+    """, unsafe_allow_html=True)
 
 # --- Sidebar ---
 with st.sidebar:
@@ -365,13 +385,8 @@ with st.sidebar:
         accept_multiple_files=False
     )
 
-    # --- Filter Checkbox ---
-    st.checkbox(
-        "Only show records with <MEMORY> tags",
-        key='filter_positives',
-        on_change=apply_filter,
-        help="Filters the view to only include records where the LLM output contains '<MEMORY>'."
-    )
+    # Removed the filter checkbox as requested
+
     st.divider()
 
     # Initialize session state variables robustly
@@ -379,14 +394,14 @@ with st.sidebar:
     st.session_state.setdefault('all_data', [])
     st.session_state.setdefault('index', 0)
     st.session_state.setdefault('labels', {})
-    st.session_state.setdefault('filter_positives', False)
+    st.session_state.setdefault('filter_positives', False)  # Kept for compatibility
     st.session_state.setdefault('current_file_id', None)
     st.session_state.setdefault('current_file_name', None)
 
     # --- Data Loading Logic ---
     if uploaded_file is not None:
         if st.session_state.current_file_id != uploaded_file.file_id:
-            st.info(f"Loading new file: '{uploaded_file.name}'...")
+            # Load data silently without showing technical messages
             loaded_data, loaded_labels = load_data_and_labels(uploaded_file)
 
             if loaded_data:
@@ -395,7 +410,7 @@ with st.sidebar:
                 st.session_state.current_file_id = uploaded_file.file_id
                 st.session_state.current_file_name = uploaded_file.name
                 apply_filter()
-                st.success(f"Loaded {len(st.session_state.all_data)} total records. Found {len(loaded_labels)} existing labels.")
+                # No success messages about loading records
             else:
                 st.session_state.all_data = []
                 st.session_state.data = []
@@ -405,7 +420,7 @@ with st.sidebar:
                 st.session_state.index = 0
 
     elif st.session_state.current_file_id is not None:
-        st.info("File removed. Clearing session state.")
+        # Silently clear session state
         st.session_state.all_data = []
         st.session_state.data = []
         st.session_state.labels = {}
@@ -504,7 +519,13 @@ with st.sidebar:
              st.caption("Label records to enable download.")
 
     elif not st.session_state.data and st.session_state.all_data:
-        st.warning("No records match the current filter criteria ('<MEMORY>' tag). Uncheck the filter box to see all records.")
+        # Show a more user-friendly message
+        st.markdown(f"""
+            <div style='background-color:rgba(223, 0, 116, 0.05);padding:15px;border-radius:5px;margin-bottom:20px;text-align:center;'>
+                <p>No records with &lt;MEMORY&gt; tags found in this file.</p>
+                <p>Uncheck the filter box to see all records.</p>
+            </div>
+        """, unsafe_allow_html=True)
 
     elif not uploaded_file and st.session_state.current_file_id is None:
         st.markdown(f"""
@@ -525,12 +546,12 @@ if st.session_state.data:
         st.markdown(f"""
             <div style='margin-bottom:20px;'>
                 <h3 style='color:{BRAND_COLOR};margin-bottom:5px;'>Record Details</h3>
-                <p style='margin:0;'>ID: <b>{record_id}</b> | Type: <b>{record.get('alert_type', 'N/A').upper()}</b></p>
+                <p style='margin:0;'>Record ID: <b>{record_id}</b> | Type: <b>{record.get('alert_type', 'N/A').upper()}</b></p>
             </div>
         """, unsafe_allow_html=True)
 
         # Enhanced LLM Output box
-        st.markdown(f"<h4 style='color:{BRAND_COLOR};'>LLM Output:</h4>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='color:{BRAND_COLOR};'>Delphi's Output:</h4>", unsafe_allow_html=True)
         
         # Style the output box with a light version of the brand color
         output_bg_color = "rgba(223, 0, 116, 0.05)"
@@ -595,21 +616,8 @@ if st.session_state.data:
 
         st.divider()
 
-        # --- Stylish Labeling Inputs ---
-        st.markdown(f"<h3 style='color:{BRAND_COLOR};'>Human Labeling</h3>", unsafe_allow_html=True)
-
-        # Enhanced styling for the definitions
-        st.markdown(f"""
-            <div style='background-color:rgba(223, 0, 116, 0.05);padding:15px;border-radius:5px;margin-bottom:20px;'>
-                <p style='margin-top:0;'><b>Definitions:</b></p>
-                <ul style='margin-bottom:0;'>
-                    <li><b style='color:{BRAND_COLOR};'>True Positive (TP):</b> LLM correctly generated a needed alert.</li>
-                    <li><b style='color:{BRAND_COLOR};'>False Positive (FP):</b> LLM incorrectly generated an alert when none was needed.</li>
-                    <li><b style='color:{BRAND_COLOR};'>True Negative (TN):</b> LLM correctly generated no alert when none was needed.</li>
-                    <li><b style='color:{BRAND_COLOR};'>False Negative (FN):</b> LLM incorrectly generated no alert when one was needed.</li>
-                </ul>
-            </div>
-        """, unsafe_allow_html=True)
+        # --- Stylish Labeling Inputs with simplified options ---
+        st.markdown(f"<h3 style='color:{BRAND_COLOR};'>Your Assessment</h3>", unsafe_allow_html=True)
 
         existing_labels = st.session_state.get('labels', {}).get(record_id, {})
         try:
@@ -617,10 +625,10 @@ if st.session_state.data:
             current_classification_index = LABEL_CLASSIFICATIONS.index(classification)
         except ValueError:
             current_classification_index = len(LABEL_CLASSIFICATIONS) - 1
-            st.warning(f"Invalid label '{classification}' found for record {record_id}. Resetting to 'Unsure / Skip'.")
+            st.warning(f"Invalid label '{classification}' found for record {record_id}. Resetting to 'I'm not sure 🤔'.")
 
         st.radio(
-            "**Label Classification:**",
+            "**How did Delphi do?**",
             options=LABEL_CLASSIFICATIONS,
             key=f"label_classification_{record_id}",
             index=current_classification_index,
@@ -630,11 +638,38 @@ if st.session_state.data:
         )
 
         st.text_area(
-            "**Optional:** Correct Memory Text (If TP/FN & text needs fix, or 'None' if FP/TN)",
+            "**Optional:** Correct Memory Text (If you think there's a better version)",
             key=f"correct_mem_{record_id}",
             value=existing_labels.get("human_label_correct_memory_optional", ""),
             height=None,
-            help="If label is FN/TP, paste correct <MEMORY> tag. If FP/TN, can leave blank or type 'None'.",
+            help="If Delphi missed something, what would have been the correct <MEMORY> tag?",
             on_change=save_labels_to_state,
             args=(current_index, record_id)
         )
+
+        # Critique text area with brand-colored border
+        st.markdown(f"""
+            <style>
+                div[data-testid="stTextArea"] textarea {{
+                    border-left: 2px solid {BRAND_COLOR} !important;
+                }}
+            </style>
+        """, unsafe_allow_html=True)
+        
+        st.text_area(
+            "Your Feedback (Any additional thoughts or explanations)",
+            key=f"critique_{record_id}",
+            value=existing_labels.get("human_label_critique", ""),
+            height=100,
+            on_change=save_labels_to_state,
+            args=(current_index, record_id)
+        )
+        
+        # Add a subtle branded footer to each record view
+        st.markdown(f"""
+            <div style='text-align:center;margin-top:30px;padding-top:10px;border-top:1px solid #eee;'>
+                <p style='color:#666;font-size:0.8rem;'>
+                    Visory AI Alert Labeling Tool | <span style='color:{BRAND_COLOR};'>Your feedback improves our system</span>
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
